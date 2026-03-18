@@ -1,63 +1,39 @@
 package main
 
 import (
+	"flag"
 	"fmt"
+	"math/rand"
 	"os"
-	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+
+	"github.com/aygp-dr/realtime-sync-orchestrator/internal/sync"
+	"github.com/aygp-dr/realtime-sync-orchestrator/internal/tui"
 )
-
-var (
-	titleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
-	helpStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-)
-
-type model struct {
-	items  []string
-	cursor int
-}
-
-func initialModel() model {
-	return model{
-		items: []string{"Loading...", "See CLAUDE.md for implementation plan"},
-	}
-}
-
-func (m model) Init() tea.Cmd { return nil }
-
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "q", "ctrl+c":
-			return m, tea.Quit
-		case "j", "down":
-			if m.cursor < len(m.items)-1 { m.cursor++ }
-		case "k", "up":
-			if m.cursor > 0 { m.cursor-- }
-		}
-	}
-	return m, nil
-}
-
-func (m model) View() string {
-	var b strings.Builder
-	b.WriteString(titleStyle.Render("Sync status across distributed systems"))
-	b.WriteString("\n\n")
-	for i, item := range m.items {
-		cursor := "  "
-		if i == m.cursor { cursor = "> " }
-		b.WriteString(fmt.Sprintf("%s%s\n", cursor, item))
-	}
-	b.WriteString("\n")
-	b.WriteString(helpStyle.Render("j/k: navigate  q: quit"))
-	return b.String()
-}
 
 func main() {
-	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
+	jsonFlag := flag.Bool("json", false, "Output current sync status as JSON and exit")
+	tickFlag := flag.Duration("tick", 5*time.Second, "Dashboard refresh interval")
+	flag.Parse()
+
+	seed := time.Now().UnixNano()
+	rng := rand.New(rand.NewSource(seed))
+
+	if *jsonFlag {
+		sources := sync.MockSources(rng)
+		out, err := sync.SourcesJSON(sources)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(out)
+		return
+	}
+
+	m := tui.NewModel(seed, *tickFlag)
+	p := tea.NewProgram(m, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
